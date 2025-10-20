@@ -1,73 +1,108 @@
-require('dotenv').config();
 const sql = require('mssql');
 
-/**
- * Data access object. Accepts connection config via constructor.
- */
 class NorthwindDb {
-  constructor(cfg) {
-    this.cfg = cfg;
+  constructor(connectionString) {
+    this.connectionString = connectionString;
     this.poolPromise = null;
   }
 
-  async getPool() {
+  async #pool() {
     if (!this.poolPromise) {
-      this.poolPromise = sql.connect(this.cfg);
+      this.poolPromise = new sql.ConnectionPool(this.connectionString).connect();
     }
     return this.poolPromise;
   }
 
-  // Returns a number (count of customers)
   async getCustomerCount() {
-    const pool = await this.getPool();
-    const result = await pool.request().query('SELECT COUNT(*) AS CustomerCount FROM dbo.Customers;');
-    return result.recordset[0].CustomerCount;
+    const r = await (await this.#pool()).request()
+      .query('SELECT COUNT(*) AS cnt FROM dbo.Customers;');
+    return r.recordset[0].cnt;
   }
 
-  // Returns an array of last names (strings)
-  async getCustomerLastNames() {
-    const pool = await this.getPool();
-    // Northwind Customers table has ContactName, not separate first/last.
-    // We'll split on the last space; if no space, use full name.
-    const result = await pool.request().query(`
-      SELECT ContactName
-      FROM dbo.Customers
-      ORDER BY ContactName;
-    `);
-    return result.recordset.map(r => {
-      const name = r.ContactName ?? '';
-      const parts = name.trim().split(' ');
-      return parts.length > 1 ? parts[parts.length - 1] : name;
-    });
+  async getCustomerNames(limit = 20) {
+    const r = await (await this.#pool()).request()
+      .input('n', sql.Int, limit)
+      .query(`
+        SELECT TOP (@n) LTRIM(RTRIM(ContactName)) AS FullName
+        FROM dbo.Customers
+        WHERE ContactName IS NOT NULL AND LTRIM(RTRIM(ContactName)) <> ''
+        ORDER BY ContactName;
+      `);
+    return r.recordset.map(x => x.FullName);
   }
 
-  // Returns an array of customer display names (strings)
-  async getCustomerNames() {
-    const pool = await this.getPool();
-    const result = await pool.request().query(`
-      SELECT ContactName
-      FROM dbo.Customers
-      ORDER BY ContactName;
-    `);
-    return result.recordset.map(r => r.ContactName);
+  async getCustomerLastNames(limit = 20) {
+    const r = await (await this.#pool()).request()
+      .input('n', sql.Int, limit)
+      .query(`
+        SELECT TOP (@n)
+          CASE WHEN CHARINDEX(' ', LTRIM(RTRIM(ContactName))) > 0
+               THEN RIGHT(LTRIM(RTRIM(ContactName)),
+                          LEN(LTRIM(RTRIM(ContactName))) - CHARINDEX(' ', LTRIM(RTRIM(ContactName))))
+               ELSE LTRIM(RTRIM(ContactName)) END AS LastName
+        FROM dbo.Customers
+        WHERE ContactName IS NOT NULL AND LTRIM(RTRIM(ContactName)) <> ''
+        ORDER BY LastName;
+      `);
+    return r.recordset.map(x => x.LastName);
   }
-}
 
-/**
- * Build config from .env (used by business layer)
- */
-function buildConfigFromEnv() {
-  return {
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    server: process.env.DB_SERVER,
-    port: Number(process.env.DB_PORT || 1433),
-    database: process.env.DB_NAME,
-    options: {
-      trustServerCertificate: true
+  async getOrdersByCustomer(customerId) {
+    const q = `
+      SELECT o.OrderID, CONVERT(date, o.OrderDate) AS OrderDate,
+             ROUND(SUM(od.UnitPrice*od.Quantity*(1.0-od.Discount)),2) AS OrderTotal
+      FROM dbo.Orders o
+      JOIN dbo.[Order Details] od ON od.OrderID = o.OrderID
+      WHERE o.CustomerID = @cid
+      GROUP BY o.OrderID, o.OrderDate
+      ORDER BY o.OrderDate;
+    `;
+    const r = await (await this.#pool()).request()
+      .input('cid', sql.NVarChar(5), customerId)
+      .query(q);
+    return r.recordset;
+  }
+
+  async getTopCustomersBySpend(limit = 5) {
+    const q = `
+      SELECT TOP (@n) c.CustomerID, c.CompanyName,
+             ROUND(SUM(od.UnitPrice*od.Quantity*(1.0-od.Discount)),2) AS TotalSpend
+      FROM dbo.Customers c
+      JOIN dbo.Orders o ON o.CustomerID = c.CustomerID
+      JOIN dbo.[Order Details] od ON od.OrderID = o.OrderID
+      GROUP BY c.CustomerID, c.CompanyName
+      ORDER BY TotalSpend DESC;
+    `;
+    const r = await (await this.#pool()).request()
+      .input('n', sql.Int, limit)
+      .query(q);
+    return r.recordset;
+  }
+
+  async getProductsByCategory() {
+    const q = `
+      SELECT cat.CategoryName, p.ProductName, CAST(p.UnitPrice AS DECIMAL(10,2)) AS UnitPrice
+      FROM dbo.Categories cat
+      JOIN dbo.Products p ON p.CategoryID = cat.CategoryID
+      ORDER BY cat.CategoryName, p.ProductName;
+    `;
+    const r = await (await this.#pool()).request().query(q);
+    return r.recordset;
+  }
+
+  async getTenMostExpensiveProducts() {
+    try {
+      const r = await (await this.#pool()).request().execute('dbo.[Ten Most Expensive Products]');
+      return r.recordset;
+    } catch {
+      const r = await (await this.#pool()).request().query(`
+        SELECT TOP 10 ProductName, UnitPrice
+        FROM dbo.Products
+        ORDER BY UnitPrice DESC;
+      `);
+      return r.recordset;
     }
-  };
+  }
 }
 
-module.exports = { NorthwindDb, buildConfigFromEnv };
-
+module.exports = { NorthwindDb };

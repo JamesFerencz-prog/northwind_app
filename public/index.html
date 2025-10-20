@@ -1,78 +1,37 @@
 <!doctype html>
-<html lang="en">
+<html>
 <head>
   <meta charset="utf-8" />
-  <title>Northwind Customers (Unit 2)</title>
+  <title>Northwind GUI</title>
   <style>
-    body { font-family: system-ui, Arial, sans-serif; margin: 2rem; }
-    header { margin-bottom: 1rem; }
-    .row { display: flex; gap: 2rem; flex-wrap: wrap; }
-    .card { border: 1px solid #ddd; border-radius: 8px; padding: 1rem; min-width: 280px; box-shadow: 0 1px 3px rgba(0,0,0,.05); }
-    h2 { margin: .25rem 0 1rem; font-size: 1.1rem; }
-    ul { margin: 0; padding-left: 1.2rem; max-height: 50vh; overflow:auto; }
-    .muted { color: #666; }
-    button { padding: .5rem .75rem; }
+    body { font-family: Arial, sans-serif; margin: 24px; }
+    h1 { margin-bottom: 8px; }
+    #buttons { display:flex; flex-wrap:wrap; gap:10px; margin:16px 0; }
+    button { padding:10px 14px; border:0; border-radius:8px; background:#4b0082; color:#fff; cursor:pointer; }
+    button:hover { filter:brightness(1.1); }
+    #result { margin-top:12px; padding:12px; border:1px solid #ddd; border-radius:8px; background:#fafafa; }
+    table { border-collapse:collapse; width:100%; }
+    th, td { border:1px solid #ddd; padding:8px; }
+    th { background:#f0f0f0; text-align:left; }
+    .error { color:#b00020; }
   </style>
 </head>
 <body>
-  <header>
-    <h1>Northwind Customers</h1>
-    <p class="muted">Simple 3-tier app: GUI → Business Layer → Data Access (SQL Server)</p>
-    <button id="refreshBtn">Refresh</button>
-  </header>
+  <h1>Northwind Customers</h1>
+  <p>GUI → Business Layer → Data Access (SQL Server)</p>
 
-  <div class="row">
-    <div class="card">
-      <h2>Total Customers</h2>
-      <div id="count">Loading…</div>
-    </div>
-    <div class="card">
-      <h2>Customer Names</h2>
-      <ul id="names"></ul>
-    </div>
-    <div class="card">
-      <h2>Customer Last Names</h2>
-      <ul id="lastnames"></ul>
-    </div>
+  <div id="buttons">
+    <button id="btnCount">1) Customer Count</button>
+    <button id="btnNames">2) Customer Names</button>
+    <button id="btnLastNames">3) Customer Last Names</button>
+    <button id="btnOrders">4) Orders by CustomerID</button>
+    <button id="btnTopSpend">5) Top 5 Customers by Spend</button>
+    <button id="btnByCat">6) Products by Category</button>
+    <button id="btnExpensive">7) Ten Most Expensive Products</button>
   </div>
 
-  <script>
-    async function load() {
-      document.getElementById('count').textContent = 'Loading…';
-      document.getElementById('names').innerHTML = '<li class="muted">Loading…</li>';
-      document.getElementById('lastnames').innerHTML = '<li class="muted">Loading…</li>';
+  <div id="result">Click a button…</div>
 
-      const [countRes, namesRes, lastRes] = await Promise.all([
-        fetch('/api/customers/count'),
-        fetch('/api/customers/names'),
-        fetch('/api/customers/lastnames'),
-      ]);
-
-      const count = await countRes.json();
-      const names = await namesRes.json();
-      const lastnames = await lastRes.json();
-
-      document.getElementById('count').textContent = count.count;
-
-      const namesUl = document.getElementById('names');
-      namesUl.innerHTML = '';
-      names.forEach(n => {
-        const li = document.createElement('li');
-        li.textContent = n;
-        namesUl.appendChild(li);
-      });
-
-      const lastUl = document.getElementById('lastnames');
-      lastUl.innerHTML = '';
-      lastnames.forEach(n => {
-        const li = document.createElement('li');
-        li.textContent = n;
-        lastUl.appendChild(li);
-      });
-    }
-
-    document.getElementById('refreshBtn').addEventListener('click', load);
-    load();
-  </script>
+  <script src="script.js"></script>
 </body>
 </html>

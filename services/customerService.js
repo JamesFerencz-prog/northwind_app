@@ -1,22 +1,15 @@
-const { NorthwindDb, buildConfigFromEnv } = require('../db/db');
+const { NorthwindDb } = require('../db/db');
 
 class CustomerService {
-  constructor() {
-    const cfg = buildConfigFromEnv();
-    this.db = new NorthwindDb(cfg); // pass connection config into DAL (constructor)
-  }
+  constructor(connStr) { this.db = new NorthwindDb(connStr); }
 
-  async getCustomerCount() {
-    return this.db.getCustomerCount();
-  }
-
-  async getCustomerLastNames() {
-    return this.db.getCustomerLastNames();
-  }
-
-  async getCustomerNames() {
-    return this.db.getCustomerNames();
-  }
+  getCustomerCount() { return this.db.getCustomerCount(); }
+  getCustomerNames() { return this.db.getCustomerNames(20); }
+  getCustomerLastNames() { return this.db.getCustomerLastNames(20); }
+  getOrdersByCustomer(id) { return this.db.getOrdersByCustomer(id); }
+  getTopCustomersBySpend() { return this.db.getTopCustomersBySpend(5); }
+  getProductsByCategory() { return this.db.getProductsByCategory(); }
+  getTenMostExpensiveProducts() { return this.db.getTenMostExpensiveProducts(); }
 }
 
 module.exports = { CustomerService };

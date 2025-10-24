@@ -1,0 +1,6 @@
+body{font-family:Arial;margin:40px;background:#f7f7fb}
+.container{max-width:400px;margin:auto}
+.card{display:flex;flex-direction:column;gap:8px;padding:20px;background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.1)}
+button{background:#4b0082;color:#fff;border:none;padding:8px 12px;border-radius:8px;cursor:pointer}
+.msg.error{color:#b00020;font-weight:bold}
+.msg.success{color:#007a2f;font-weight:bold}

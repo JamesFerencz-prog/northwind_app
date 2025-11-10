@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>IT481 – Dressing Room Simulation (Web/JS)</title>
+  <style>
+    :root{--bg:#0b0f14;--card:#121821;--muted:#a8b3c7;--text:#e8eef9;--accent:#5ea0ff;--good:#35c759;--warn:#ffb020;--bad:#ff6b6b}
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--text);font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial}
+    header{padding:24px 20px;border-bottom:1px solid #1d2530;background:linear-gradient(180deg,#0f1520,#0b0f14)}
+    h1{margin:0;font-size:22px}
+    .wrap{max-width:1100px;margin:0 auto;padding:20px;display:grid;gap:16px}
+    .grid{display:grid;gap:16px;grid-template-columns:1fr}
+    @media (min-width:960px){.grid{grid-template-columns:1.1fr 0.9fr}}
+    .card{background:var(--card);border:1px solid #1e2733;border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,.2)}
+    .card h2{margin:0;padding:16px 18px;border-bottom:1px solid #1e2733;font-size:18px}
+    .card .body{padding:16px 18px}
+    label{display:block;margin:10px 0 6px;color:var(--muted)}
+    input[type=number]{width:120px;padding:8px 10px;border-radius:10px;border:1px solid #2a3545;background:#0f1520;color:var(--text)}
+    .row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+    button{appearance:none;border:0;border-radius:12px;padding:10px 14px;background:var(--accent);color:#041222;font-weight:700;cursor:pointer;transition:transform .05s ease;box-shadow:0 6px 20px rgba(94,160,255,.25)}
+    button:active{transform:translateY(1px)}
+    .pill{display:inline-block;padding:6px 10px;border-radius:999px;background:#0f1520;border:1px solid #263246;color:var(--muted);font-size:12px}
+    .console{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;background:#0a0f17;border-radius:12px;border:1px solid #1d2530;padding:12px;min-height:240px;max-height:420px;overflow:auto;white-space:pre-wrap}
+    .console b{color:var(--accent)}
+    table{width:100%;border-collapse:collapse;background:#0a0f17;border:1px solid #1d2530;border-radius:12px;overflow:hidden}
+    th,td{padding:10px;border-bottom:1px solid #1d2530;text-align:left}
+    th{color:var(--muted);font-weight:600;background:#0f1520}
+    tfoot td{font-weight:700}
+    .ok{color:var(--good)} .warn{color:var(--warn)} .bad{color:var(--bad)}
+    .tiny{font-size:12px;color:var(--muted)}
+    .kbd{font-family:ui-monospace,Menlo,Consolas,monospace;background:#0f1520;border:1px solid #263246;border-bottom-width:2px;border-radius:8px;padding:2px 6px}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>IT481 – Unit 6: Dressing Room Concurrency Simulation (Web/JS)</h1>
+    <div class="tiny">Meets rubric: DressingRoom, Customer, Scenario, three runs (10, 20, 30 customers), live activity & summary.</div>
+  </header>
+
+  <div class="wrap">
+    <div class="grid">
+      <section class="card">
+        <h2>Controls</h2>
+        <div class="body">
+          <div class="row">
+            <div>
+              <label for="rooms">Rooms (default constructor = 3)</label>
+              <input id="rooms" type="number" min="1" step="1" value="3" />
+            </div>
+            <div class="row" style="gap:8px">
+              <span class="pill">Scenarios: <b>10</b>, <b>20</b>, <b>30</b> customers</span>
+            </div>
+          </div>
+          <div class="row" style="margin-top:12px">
+            <button id="run">Run All Scenarios</button>
+            <button id="clear">Clear Output</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Live Activity</h2>
+        <div class="body">
+          <div id="console" class="console" aria-live="polite"></div>
+        </div>
+      </section>
+    </div>
+
+    <section class="card">
+      <h2>Summary</h2>
+      <div class="body">
+        <div class="tiny" style="margin-bottom:8px">Includes per-scenario stats and overall comparison for your results paper.</div>
+        <div id="summary"></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Results Paper Notes (Copy into your report)</h2>
+      <div class="body tiny" id="paper"></div>
+    </section>
+  </div>
+
+  <script>
+  // Utility helpers
+  const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+  const now = () => performance.now();
+  const fmtMs = ms => `${ms.toFixed(0)} ms`;
+  const fmtS = ms => `${(ms/1000).toFixed(2)} s`;
+
+  const logEl = document.getElementById('console');
+  const summaryEl = document.getElementById('summary');
+  const paperEl = document.getElementById('paper');
+
+  function log(msg){
+    const time = new Date().toLocaleTimeString();
+    logEl.innerHTML += `[${time}] ${msg}\\n`;
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  // Semaphore
+  class Semaphore {
+    constructor(count){ this.max = count; this.count = count; this.queue = []; }
+    acquire(){
+      return new Promise(resolve=>{
+        if(this.count>0){ this.count--; resolve(this._makeRelease()); }
+        else this.queue.push(resolve);
+      });
+    }
+    _makeRelease(){
+      let released=false;
+      return ()=>{
+        if(released) return;
+        released=true;
+        if(this.queue.length>0){
+          const resume=this.queue.shift();
+          resume(this._makeRelease());
+        } else this.count++;
+      };
+    }
+  }
+
+  // DressingRoom
+  class DressingRoom {
+    constructor(rooms=3){
+      this.totalRooms=rooms;
+      this.semaphore=new Semaphore(rooms);
+      this.free=Array.from({length:rooms},(_,i)=>i+1);
+      this.inUse=new Set();
+    }
+    async waitForRoom(){
+      const release=await this.semaphore.acquire();
+      const roomNo=this.free.shift();
+      this.inUse.add(roomNo);
+      return {
+        roomNo,
+        release:()=>{ this.inUse.delete(roomNo); this.free.push(roomNo); this.free.sort((a,b)=>a-b); release(); }
+      };
+    }
+  }
+
+  // Customer
+  class Customer {
+    constructor(id, items){
+      this.id=id;
+      this.items=items ?? (1+Math.floor(Math.random()*5));
+      this.waitStart=0; this.waitEnd=0; this.totalTime=0;
+    }
+    async tryOn(){
+      let spent=0;
+      for(let i=0;i<this.items;i++){
+        const ms=200+Math.random()*300;
+        await sleep(ms);
+        spent+=ms;
+      }
+      return spent;
+    }
+  }
+
+  // Scenario
+  class Scenario {
+    constructor({rooms, customers}){
+      this.rooms=rooms;
+      this.customerCount=customers;
+      this.dressingRoom=new DressingRoom(rooms);
+      this.customers=Array.from({length:customers},(_,i)=>new Customer(i+1));
+      this.results={perCustomer:[],avgWait:0,maxWait:0,totalDuration:0};
+    }
+    async run(){
+      const start=now();
+      const tasks=this.customers.map(async cust=>{
+        cust.waitStart=now();
+        log(`<b>Customer ${cust.id}</b> arrives with ${cust.items} item(s) and waits…`);
+        const token=await this.dressingRoom.waitForRoom();
+        cust.waitEnd=now();
+        const waited=cust.waitEnd-cust.waitStart;
+        log(`  ↳ Customer ${cust.id} ENTERS room #${token.roomNo} after waiting ${fmtMs(waited)}.`);
+        const spent=await cust.tryOn();
+        token.release();
+        log(`  ↳ Customer ${cust.id} EXITS room #${token.roomNo} after ${fmtMs(spent)} trying on ${cust.items} item(s).`);
+        cust.totalTime=waited+spent;
+        return {id:cust.id,waited,spent,total:cust.totalTime};
+      });
+      const per=await Promise.all(tasks);
+      const totalDuration=now()-start;
+      const waits=per.map(r=>r.waited);
+      const avgWait=waits.reduce((a,b)=>a+b,0)/waits.length;
+      const maxWait=Math.max(...waits);
+      this.results={perCustomer:per,avgWait,maxWait,totalDuration};
+      return this.results;
+    }
+  }
+
+  // Run Scenarios
+  async function runAll(){
+    logEl.innerHTML=''; summaryEl.innerHTML=''; paperEl.innerHTML='';
+    const roomsVal=Math.max(1,parseInt(document.getElementById('rooms').value||'3',10));
+    const sizes=[10,20,30];
+    const summaries=[];
+    for(const n of sizes){
+      log(`\\n<b>▶ Scenario: ${n} customers, ${roomsVal} room(s)</b>`);
+      const scenario=new Scenario({rooms:roomsVal,customers:n});
+      const res=await scenario.run();
+      const html=`
+        <div class="card" style="margin:12px 0">
+          <div class="body">
+            <div class="row" style="justify-content:space-between">
+              <div><b>Scenario</b>: ${n} customers, ${roomsVal} room(s)</div>
+              <div class="pill">Duration: ${fmtS(res.totalDuration)}</div>
+            </div>
+            <div class="tiny" style="margin-top:6px">Avg Wait: ${fmtMs(res.avgWait)} · Max Wait: ${fmtMs(res.maxWait)}</div>
+          </div>
+        </div>`;
+      summaryEl.insertAdjacentHTML('beforeend',html);
+      summaries.push({customers:n,rooms:roomsVal,...res});
+      log(`<b>✓ Scenario complete:</b> ${n} customers · Avg wait ${fmtMs(res.avgWait)} · Max wait ${fmtMs(res.maxWait)} · Total ${fmtS(res.totalDuration)}\\n`);
+    }
+    paperEl.innerHTML=buildPaper(summaries);
+  }
+
+  function buildPaper(summaries){
+    const rows=summaries.map(s=>`<li>${s.customers} customers, ${s.rooms} room(s): Avg ${fmtMs(s.avgWait)}, Max ${fmtMs(s.maxWait)}, Duration ${fmtS(s.totalDuration)}</li>`).join('');
+    return `<p><b>Summary of Simulation Results.</b> I implemented a browser-based concurrency simulation using a semaphore to manage limited dressing rooms. The <span class='kbd'>DressingRoom</span> class enforces capacity, the <span class='kbd'>Customer</span> simulates random item counts, and the <span class='kbd'>Scenario</span> records timing data.</p>
+    <ul>${rows}</ul>
+    <p><b>Interpretation.</b> As customers increase while rooms remain fixed, wait times rise due to contention, demonstrating real-world concurrency behavior.</p>`;
+  }
+
+  document.getElementById('run').addEventListener('click',runAll);
+  document.getElementById('clear').addEventListener('click',()=>{logEl.innerHTML='';summaryEl.innerHTML='';paperEl.innerHTML='';});
+  </script>
+</body>
+</html>
+

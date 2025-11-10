@@ -1,46 +1,45 @@
-require('dotenv').config();
-const express = require('express');
-const path = require('path');
-const { CustomerService } = require('./services/customerService');
+// IT481 Unit 4 Server - Authentication + Three-Table Report (Northwind)
+require("dotenv").config();
+const express = require("express");
+const session = require("express-session");
+const path = require("path");
+
+const requireAuth = require("./middleware/requireAuth");
+const authRoutes = require("./routes/auth");
+const reportRoutes = require("./routes/report");
 
 const app = express();
-const svc = new CustomerService();
 const PORT = Number(process.env.APP_PORT || 3000);
 
-// Static GUI
-app.use(express.static(path.join(__dirname, 'public')));
+// ---------- Middleware & Sessions ----------
+app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
+app.use(
+  session({
+    secret: process.env.SESSION_SECRET || "change-me",
+    resave: false,
+    saveUninitialized: false,
+  })
+);
 
-// API routes (GUI calls these)
-app.get('/api/customers/count', async (req, res) => {
-  try {
-    const count = await svc.getCustomerCount();
-    res.json({ count });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Failed to load customer count.' });
-  }
+// ---------- Static Files (optional GUI folder) ----------
+app.use(express.static(path.join(__dirname, "public")));
+
+// ---------- Authentication Routes ----------
+app.use(authRoutes);
+
+// ---------- Protected Three-Table Report ----------
+app.use(reportRoutes(requireAuth));
+
+// ---------- Root ----------
+app.get("/", (req, res) => {
+  res.send(
+    `<h1>Northwind Secure App</h1>
+     <p><a href="/login">Login</a> to access protected routes.</p>`
+  );
 });
 
-app.get('/api/customers/names', async (req, res) => {
-  try {
-    const names = await svc.getCustomerNames();
-    res.json(names);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Failed to load customer names.' });
-  }
-});
-
-app.get('/api/customers/lastnames', async (req, res) => {
-  try {
-    const names = await svc.getCustomerLastNames();
-    res.json(names);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Failed to load customer last names.' });
-  }
-});
-
+// ---------- Start Server ----------
 app.listen(PORT, () => {
-  console.log(`✅ App listening on http://localhost:${PORT}`);
+  console.log(`✅ Unit 4 server running at http://localhost:${PORT}`);
 });
